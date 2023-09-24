@@ -53,6 +53,12 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
+// TODO we can leave it as is, and accept this as how business logic meets temporal logic (downside, testability, flexibility but easy)
+// TODO we can ask for a function signature and pass the business logic in (flexible, easy)
+// TODO we can use the strategy pattern and pass a strategy (bit overhead, flexible, testable)
+// TODO we can use the strategy pattern and supply it using dependency injection (bit overhead, more complex, user does not have to suply business logic)
+// TODO we can use the template method pattern (most complicated and overhead)
+
 // UpgradeEmailWorkflow the workflow, only location where Temporal specific code and business logic should be mixed
 // also used by the worker
 func UpgradeEmailWorkflow(ctx workflow.Context, reservationId string) (bool, error) {
