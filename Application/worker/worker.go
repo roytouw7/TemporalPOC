@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	email "TemporalTemplatePatternPOC/BaseLine"
+	email "TemporalTemplatePatternPOC/Application"
 	"TemporalTemplatePatternPOC/Mocks"
 
 	"go.temporal.io/sdk/client"
@@ -22,6 +22,7 @@ func main() {
 	w.RegisterWorkflow(email.UpgradeEmailWorkflow)
 
 	w.RegisterActivity(Mocks.SendEmail)
+	w.RegisterActivity(Mocks.GetRoomToUpgrade)
 
 	err = w.Run(worker.InterruptCh())
 	if err != nil {

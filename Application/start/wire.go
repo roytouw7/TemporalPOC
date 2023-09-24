@@ -3,7 +3,7 @@
 package main
 
 import (
-	email "TemporalTemplatePatternPOC/BaseLine"
+	email "TemporalTemplatePatternPOC/Application"
 
 	"github.com/google/wire"
 )

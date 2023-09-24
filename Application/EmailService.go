@@ -18,11 +18,12 @@ func NewEmailService(workflowService EmailWorkflowService) EmailService {
 	}
 }
 
+// SendUpgradeEmail the only thing the email service knows,
+// it gets injected a dependency which can execute a workflow requiring some data it(emailService) can provide
 func (e emailService) SendUpgradeEmail(reservationId string) (bool, error) {
-	msg := e.createUpgradeEmailMessage(reservationId)
-	return e.workflowService.executeUpgradeEmailWorkflow(reservationId, msg)
+	return e.workflowService.executeUpgradeEmailWorkflow(reservationId)
 }
 
-func (e emailService) createUpgradeEmailMessage(reservationId string) string {
-	return fmt.Sprintf("reservation id: \"%s\" can be upgraded!", reservationId)
+func CreateUpgradeEmailMessage(reservationId, room string) string {
+	return fmt.Sprintf("reservation id: \"%s\" can be upgraded to room %s!", reservationId, room)
 }

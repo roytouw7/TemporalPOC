@@ -7,7 +7,7 @@
 package main
 
 import (
-	"TemporalTemplatePatternPOC/BaseLine"
+	"TemporalTemplatePatternPOC/Application"
 )
 
 // Injectors from wire.go:
