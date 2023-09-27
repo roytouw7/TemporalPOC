@@ -105,6 +105,10 @@ func UpgradeEmailWorkflowV2(ctx workflow.Context, reservationId string) (bool, e
 	r := &receiver{reservationId: reservationId, ctx: &ctx}
 	sendHandler.execute(r)
 
+	if r.error != nil {
+		return false, r.error
+	}
+
 	return r.success, nil
 }
 
@@ -114,51 +118,35 @@ type receiver struct {
 	room          string
 	email         string
 	success       bool
-}
-
-type handler interface {
-	execute(r *receiver)
-	setNext(handler)
+	error         error
 }
 
 type getRoomToUpgradeHandler struct {
-	next handler
+	baseHandler
 }
 
 func (h *getRoomToUpgradeHandler) execute(r *receiver) {
-	err := workflow.ExecuteActivity(*r.ctx, Mocks.GetRoomToUpgrade, r.reservationId).Get(*r.ctx, &r.room)
-	if err != nil {
-		panic(err)
+	if r.error == nil {
+		r.error = workflow.ExecuteActivity(*r.ctx, Mocks.GetRoomToUpgrade, r.reservationId).Get(*r.ctx, &r.room)
 	}
-}
-
-func (h *getRoomToUpgradeHandler) setNext(next handler) {
-	h.next = next
 }
 
 type createUpgradeEmailMessageHandler struct {
-	next handler
+	baseHandler
 }
 
 func (h *createUpgradeEmailMessageHandler) execute(r *receiver) {
-	r.email = CreateUpgradeEmailMessage(r.reservationId, r.room)
-}
-
-func (h *createUpgradeEmailMessageHandler) setNext(next handler) {
-	h.next = next
-}
-
-type sendEmailHandler struct {
-	next handler
-}
-
-func (h *sendEmailHandler) execute(r *receiver) {
-	err := workflow.ExecuteActivity(*r.ctx, Mocks.SendEmail, r.email).Get(*r.ctx, &r.success)
-	if err != nil {
-		panic(err)
+	if r.error == nil {
+		r.email = CreateUpgradeEmailMessage(r.reservationId, r.room)
 	}
 }
 
-func (h *sendEmailHandler) setNext(next handler) {
-	h.next = next
+type sendEmailHandler struct {
+	baseHandler
+}
+
+func (h *sendEmailHandler) execute(r *receiver) {
+	if r.error == nil {
+		r.error = workflow.ExecuteActivity(*r.ctx, Mocks.SendEmail, r.email).Get(*r.ctx, &r.success)
+	}
 }
