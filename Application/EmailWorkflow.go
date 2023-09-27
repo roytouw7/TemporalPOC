@@ -17,12 +17,14 @@ type WorkflowClient interface {
 }
 
 type emailWorkflowService struct {
-	client WorkflowClient
+	client  WorkflowClient
+	factory ChainOfCommandFactory
 }
 
-func NewEmailWorkflowService(client WorkflowClient) EmailWorkflowService {
+func NewEmailWorkflowService(client WorkflowClient, factory ChainOfCommandFactory) EmailWorkflowService {
 	return &emailWorkflowService{
-		client: client,
+		client:  client,
+		factory: factory,
 	}
 }
 
@@ -38,7 +40,7 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 		TaskQueue: "greeting-tasks",
 	}
 
-	we, err := e.client.ExecuteWorkflow(context.Background(), options, UpgradeEmailWorkflowV3, reservationId)
+	we, err := e.client.ExecuteWorkflow(context.Background(), options, UpgradeEmailWorkflowV3, e.factory, reservationId)
 	if err != nil {
 		log.Fatalln("Unable to execute workflow", err)
 	}
@@ -53,8 +55,15 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
-func createChainOfCommand(reservationId string) (*receiver, []handler) {
-	r := &receiver{reservationId: reservationId} // TODO the context is not set yet
+type ChainOfCommandFactory interface {
+	create(reservationId string) (*receiver, []handler)
+}
+
+// chainOfCommandFactory made a factory object to allow for dependency injection, should allow for tailored unit testing by injecting a mock factory
+type chainOfCommandFactory struct{}
+
+func (f chainOfCommandFactory) create(reservationId string) (*receiver, []handler) {
+	r := &receiver{reservationId: reservationId}
 
 	roomUpgradeHandler := &getRoomToUpgradeHandler{}
 	createMailHandler := &createUpgradeEmailMessageHandler{}
@@ -74,8 +83,8 @@ func createChainOfCommand(reservationId string) (*receiver, []handler) {
 
 // UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern and passed in handlers
 // sadly we can not simply pass the handlers in as a workflow function can not accept functions do to them not being serializable
-func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
-	r, handlers := createChainOfCommand(reservationId)
+func UpgradeEmailWorkflowV3(ctx workflow.Context, factory ChainOfCommandFactory, reservationId string) (bool, error) {
+	r, handlers := factory.create(reservationId)
 
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Second * 5,

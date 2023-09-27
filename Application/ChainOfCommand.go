@@ -12,3 +12,7 @@ type handler interface {
 	execute(r *receiver)
 	setNext(handler)
 }
+
+func ChainOfCommandFactoryFactory() ChainOfCommandFactory {
+	return chainOfCommandFactory{}
+}
