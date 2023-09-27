@@ -18,8 +18,7 @@ func initialiseApplication() (email.ReservationService, func(), error) {
 		return nil, nil, err
 	}
 	workflowClient := CastToWorkflowClient(closableWorkflowClient)
-	chainOfCommandFactory := email.ChainOfCommandFactoryFactory()
-	emailWorkflowService := email.NewEmailWorkflowService(workflowClient, chainOfCommandFactory)
+	emailWorkflowService := email.NewEmailWorkflowService(workflowClient)
 	emailService := email.NewEmailService(emailWorkflowService)
 	reservationService := email.NewReservationService(emailService)
 	return reservationService, func() {

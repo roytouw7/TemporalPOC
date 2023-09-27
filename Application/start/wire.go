@@ -19,7 +19,6 @@ func initialiseApplication() (_ email.ReservationService, _ func(), err error) {
 		email.NewEmailWorkflowService,
 		email.ClientFactory,
 		CastToWorkflowClient,
-		email.ChainOfCommandFactoryFactory,
 	)
 
 	return

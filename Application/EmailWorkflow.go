@@ -12,24 +12,23 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+// WorkflowClient limit our knowledge of Temporal
 type WorkflowClient interface {
 	ExecuteWorkflow(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error)
 }
 
-type emailWorkflowService struct {
-	client  WorkflowClient
-	factory ChainOfCommandFactory
-}
-
-func NewEmailWorkflowService(client WorkflowClient, factory ChainOfCommandFactory) EmailWorkflowService {
-	return &emailWorkflowService{
-		client:  client,
-		factory: factory,
-	}
-}
-
 type EmailWorkflowService interface {
 	executeUpgradeEmailWorkflow(reservationId string) (bool, error)
+}
+
+type emailWorkflowService struct {
+	client WorkflowClient
+}
+
+func NewEmailWorkflowService(client WorkflowClient) EmailWorkflowService {
+	return &emailWorkflowService{
+		client: client,
+	}
 }
 
 // executeUpgradeEmailWorkflow Temporal specific method for executing the workflow, no business logic, should be fine
@@ -40,7 +39,7 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 		TaskQueue: "greeting-tasks",
 	}
 
-	we, err := e.client.ExecuteWorkflow(context.Background(), options, UpgradeEmailWorkflowV3, e.factory, reservationId)
+	we, err := e.client.ExecuteWorkflow(context.Background(), options, UpgradeEmailWorkflowV3, reservationId)
 	if err != nil {
 		log.Fatalln("Unable to execute workflow", err)
 	}
@@ -55,14 +54,7 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
-type ChainOfCommandFactory interface {
-	create(reservationId string) (*receiver, []handler)
-}
-
-// chainOfCommandFactory made a factory object to allow for dependency injection, should allow for tailored unit testing by injecting a mock factory
-type chainOfCommandFactory struct{}
-
-func (f chainOfCommandFactory) create(reservationId string) (*receiver, []handler) {
+func createChainOfCommand(reservationId string) (*receiver, []handler) {
 	r := &receiver{reservationId: reservationId}
 
 	roomUpgradeHandler := &getRoomToUpgradeHandler{}
@@ -81,10 +73,11 @@ func (f chainOfCommandFactory) create(reservationId string) (*receiver, []handle
 	return r, handlers
 }
 
-// UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern and passed in handlers
+// UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern
 // sadly we can not simply pass the handlers in as a workflow function can not accept functions do to them not being serializable
-func UpgradeEmailWorkflowV3(ctx workflow.Context, factory ChainOfCommandFactory, reservationId string) (bool, error) {
-	r, handlers := factory.create(reservationId)
+func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
+	// TODO it's a major bummer this factory fn can't be injected somehow, would allow for creating tailored factories for unit tests to mock some parts of the chain
+	r, handlers := createChainOfCommand(reservationId)
 
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Second * 5,
@@ -100,6 +93,8 @@ func UpgradeEmailWorkflowV3(ctx workflow.Context, factory ChainOfCommandFactory,
 
 	return r.success, nil
 }
+
+// Orchestration code below, a handler for every part of the process
 
 type receiver struct {
 	ctx           *workflow.Context
