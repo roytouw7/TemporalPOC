@@ -38,7 +38,7 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 		TaskQueue: "greeting-tasks",
 	}
 
-	we, err := e.client.ExecuteWorkflow(context.Background(), options, UpgradeEmailWorkflow, reservationId)
+	we, err := e.client.ExecuteWorkflow(context.Background(), options, UpgradeEmailWorkflowV2, reservationId)
 	if err != nil {
 		log.Fatalln("Unable to execute workflow", err)
 	}
@@ -86,4 +86,79 @@ func UpgradeEmailWorkflow(ctx workflow.Context, reservationId string) (bool, err
 	}
 
 	return success, nil
+}
+
+// UpgradeEmailWorkflowV2 using the Chain of Responsibility design pattern
+func UpgradeEmailWorkflowV2(ctx workflow.Context, reservationId string) (bool, error) {
+	options := workflow.ActivityOptions{
+		StartToCloseTimeout: time.Second * 5,
+	}
+	ctx = workflow.WithActivityOptions(ctx, options)
+
+	roomUpgradeHandler := &getRoomToUpgradeHandler{}
+	createMailHandler := &createUpgradeEmailMessageHandler{}
+	sendHandler := &sendEmailHandler{}
+
+	roomUpgradeHandler.setNext(createMailHandler)
+	createMailHandler.setNext(sendHandler)
+
+	r := &receiver{reservationId: reservationId, ctx: &ctx}
+	sendHandler.execute(r)
+
+	return r.success, nil
+}
+
+type receiver struct {
+	ctx           *workflow.Context
+	reservationId string
+	room          string
+	email         string
+	success       bool
+}
+
+type handler interface {
+	execute(r *receiver)
+	setNext(handler)
+}
+
+type getRoomToUpgradeHandler struct {
+	next handler
+}
+
+func (h *getRoomToUpgradeHandler) execute(r *receiver) {
+	err := workflow.ExecuteActivity(*r.ctx, Mocks.GetRoomToUpgrade, r.reservationId).Get(*r.ctx, &r.room)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (h *getRoomToUpgradeHandler) setNext(next handler) {
+	h.next = next
+}
+
+type createUpgradeEmailMessageHandler struct {
+	next handler
+}
+
+func (h *createUpgradeEmailMessageHandler) execute(r *receiver) {
+	r.email = CreateUpgradeEmailMessage(r.reservationId, r.room)
+}
+
+func (h *createUpgradeEmailMessageHandler) setNext(next handler) {
+	h.next = next
+}
+
+type sendEmailHandler struct {
+	next handler
+}
+
+func (h *sendEmailHandler) execute(r *receiver) {
+	err := workflow.ExecuteActivity(*r.ctx, Mocks.SendEmail, r.email).Get(*r.ctx, &r.success)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (h *sendEmailHandler) setNext(next handler) {
+	h.next = next
 }
