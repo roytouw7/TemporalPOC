@@ -19,7 +19,7 @@ func main() {
 
 	w := worker.New(c, "greeting-tasks", worker.Options{})
 
-	w.RegisterWorkflow(email.UpgradeEmailWorkflowV2)
+	w.RegisterWorkflow(email.UpgradeEmailWorkflowV3)
 
 	w.RegisterActivity(Mocks.SendEmail)
 	w.RegisterActivity(Mocks.GetRoomToUpgrade)

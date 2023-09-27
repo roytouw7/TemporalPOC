@@ -38,7 +38,7 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 		TaskQueue: "greeting-tasks",
 	}
 
-	we, err := e.client.ExecuteWorkflow(context.Background(), options, UpgradeEmailWorkflowV2, reservationId)
+	we, err := e.client.ExecuteWorkflow(context.Background(), options, UpgradeEmailWorkflowV3, reservationId)
 	if err != nil {
 		log.Fatalln("Unable to execute workflow", err)
 	}
@@ -104,6 +104,45 @@ func UpgradeEmailWorkflowV2(ctx workflow.Context, reservationId string) (bool, e
 
 	r := &receiver{reservationId: reservationId, ctx: &ctx}
 	sendHandler.execute(r)
+
+	if r.error != nil {
+		return false, r.error
+	}
+
+	return r.success, nil
+}
+
+func createChainOfCommand(reservationId string) (*receiver, []handler) {
+	r := &receiver{reservationId: reservationId} // TODO the context is not set yet
+
+	roomUpgradeHandler := &getRoomToUpgradeHandler{}
+	createMailHandler := &createUpgradeEmailMessageHandler{}
+	sendHandler := &sendEmailHandler{}
+
+	roomUpgradeHandler.setNext(createMailHandler)
+	createMailHandler.setNext(sendHandler)
+
+	handlers := []handler{
+		roomUpgradeHandler,
+		createMailHandler,
+		sendHandler,
+	}
+
+	return r, handlers
+}
+
+// UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern and passed in handlers
+// sadly we can not simply pass the handlers in as a workflow function can not accept functions do to them not being serializable
+func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
+	r, handlers := createChainOfCommand(reservationId)
+
+	options := workflow.ActivityOptions{
+		StartToCloseTimeout: time.Second * 5,
+	}
+	ctx = workflow.WithActivityOptions(ctx, options)
+	r.ctx = &ctx
+
+	handlers[len(handlers)-1].execute(r)
 
 	if r.error != nil {
 		return false, r.error
