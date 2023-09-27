@@ -119,6 +119,7 @@ type createUpgradeEmailMessageHandler struct {
 	baseHandler
 }
 
+// Now this piece of business logic can be separated of any Temporal knowledge and unit tested completely isolated
 func (h *createUpgradeEmailMessageHandler) execute(r *receiver) {
 	if r.error == nil {
 		r.email = CreateUpgradeEmailMessage(r.reservationId, r.room)
