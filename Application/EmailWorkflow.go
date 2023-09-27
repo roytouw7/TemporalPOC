@@ -53,65 +53,6 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
-// TODO we can leave it as is, and accept this as how business logic meets temporal logic (downside, testability, flexibility but easy)
-// TODO we can ask for a function signature and pass the business logic in (flexible, easy)
-// TODO we can use the strategy pattern and pass a strategy (bit overhead, flexible, testable)
-// TODO we can use the strategy pattern and supply it using dependency injection (bit overhead, more complex, user does not have to suply business logic)
-// TODO we can use the template method pattern (most complicated and overhead)
-
-// UpgradeEmailWorkflow the workflow, only location where Temporal specific code and business logic should be mixed
-// also used by the worker
-func UpgradeEmailWorkflow(ctx workflow.Context, reservationId string) (bool, error) {
-	options := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Second * 5,
-	}
-	ctx = workflow.WithActivityOptions(ctx, options)
-
-	var room string
-	err := workflow.ExecuteActivity(ctx, Mocks.GetRoomToUpgrade, reservationId).Get(ctx, &room)
-	if err != nil {
-		return false, err
-	}
-
-	// mixed in business logic
-	emailMessage := CreateUpgradeEmailMessage(reservationId, room)
-
-	var success bool
-	err = workflow.ExecuteActivity(ctx, Mocks.SendEmail, emailMessage).Get(ctx, &success)
-	if err != nil {
-		return false, err
-	}
-	if !success {
-		return success, nil
-	}
-
-	return success, nil
-}
-
-// UpgradeEmailWorkflowV2 using the Chain of Responsibility design pattern
-func UpgradeEmailWorkflowV2(ctx workflow.Context, reservationId string) (bool, error) {
-	options := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Second * 5,
-	}
-	ctx = workflow.WithActivityOptions(ctx, options)
-
-	roomUpgradeHandler := &getRoomToUpgradeHandler{}
-	createMailHandler := &createUpgradeEmailMessageHandler{}
-	sendHandler := &sendEmailHandler{}
-
-	roomUpgradeHandler.setNext(createMailHandler)
-	createMailHandler.setNext(sendHandler)
-
-	r := &receiver{reservationId: reservationId, ctx: &ctx}
-	sendHandler.execute(r)
-
-	if r.error != nil {
-		return false, r.error
-	}
-
-	return r.success, nil
-}
-
 func createChainOfCommand(reservationId string) (*receiver, []handler) {
 	r := &receiver{reservationId: reservationId} // TODO the context is not set yet
 
