@@ -18,7 +18,8 @@ func initialiseApplication() (email.ReservationService, func(), error) {
 		return nil, nil, err
 	}
 	workflowClient := CastToWorkflowClient(closableWorkflowClient)
-	emailWorkflowService := email.NewEmailWorkflowService(workflowClient)
+	handlerProvider := handlerProviderConcrete()
+	emailWorkflowService := email.NewEmailWorkflowService(workflowClient, handlerProvider)
 	emailService := email.NewEmailService(emailWorkflowService)
 	reservationService := email.NewReservationService(emailService)
 	return reservationService, func() {
@@ -30,4 +31,8 @@ func initialiseApplication() (email.ReservationService, func(), error) {
 
 func CastToWorkflowClient(c email.ClosableWorkflowClient) email.WorkflowClient {
 	return c
+}
+
+func handlerProviderConcrete() email.HandlerProvider {
+	return email.NewHandlerProvider(new(email.GetRoomToUpgradeHandler), new(email.CreateUpgradeEmailMessageHandler), new(email.SendEmailHandler))
 }

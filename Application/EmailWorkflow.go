@@ -12,6 +12,8 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+var globalHandlerProvider HandlerProvider
+
 // WorkflowClient limit our knowledge of Temporal
 type WorkflowClient interface {
 	ExecuteWorkflow(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error)
@@ -25,7 +27,9 @@ type emailWorkflowService struct {
 	client WorkflowClient
 }
 
-func NewEmailWorkflowService(client WorkflowClient) EmailWorkflowService {
+func NewEmailWorkflowService(client WorkflowClient, factory HandlerProvider) EmailWorkflowService {
+	globalHandlerProvider = factory // TODO I'm not happy with exposing the injected provider to the global scope to use it in the workflow again... But it works?
+
 	return &emailWorkflowService{
 		client: client,
 	}
@@ -54,14 +58,35 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
-func createChainOfCommand(reservationId string) (*receiver, handler) {
+type HandlerProvider interface {
+	createChainOfCommand(reservationId string) (*receiver, handler)
+}
+
+type handlerProvider struct {
+	getRoomToUpgradeHandler          handler
+	createUpgradeEmailMessageHandler handler
+	sendEmailHandler                 handler
+}
+
+func NewHandlerProvider(getRoomToUpgradeHandler handler, createUpgradeEmailMessageHandler handler, sendEmailHandler handler) HandlerProvider {
+	return &handlerProvider{
+		getRoomToUpgradeHandler:          getRoomToUpgradeHandler,
+		createUpgradeEmailMessageHandler: createUpgradeEmailMessageHandler,
+		sendEmailHandler:                 sendEmailHandler,
+	}
+}
+
+// createChainOfCommand create orchestration of handlers
+func (f *handlerProvider) createChainOfCommand(reservationId string) (*receiver, handler) {
 	r := &receiver{reservationId: reservationId}
 
-	roomUpgradeHandler := &getRoomToUpgradeHandler{}
-	createMailHandler := &createUpgradeEmailMessageHandler{}
-	sendHandler := &sendEmailHandler{}
+	roomUpgradeHandler := f.getRoomToUpgradeHandler
+	createMailHandler := f.createUpgradeEmailMessageHandler
+	sendHandler := f.sendEmailHandler
 
-	roomUpgradeHandler.setNext(createMailHandler).setNext(sendHandler)
+	roomUpgradeHandler.
+		setNext(createMailHandler).
+		setNext(sendHandler)
 
 	return r, roomUpgradeHandler
 }
@@ -69,8 +94,7 @@ func createChainOfCommand(reservationId string) (*receiver, handler) {
 // UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern
 // sadly we can not simply pass the handlers in as a workflow function can not accept functions do to them not being serializable
 func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
-	// TODO it's a major bummer this factory fn can't be injected somehow, would allow for creating tailored factories for unit tests to mock some parts of the chain
-	r, handler := createChainOfCommand(reservationId)
+	r, handler := globalHandlerProvider.createChainOfCommand(reservationId)
 
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Second * 5,
@@ -98,34 +122,34 @@ type receiver struct {
 	error         error
 }
 
-type getRoomToUpgradeHandler struct {
+type GetRoomToUpgradeHandler struct {
 	baseHandler
 }
 
-func (h *getRoomToUpgradeHandler) execute(r *receiver) {
+func (h *GetRoomToUpgradeHandler) execute(r *receiver) {
 	if r.error == nil {
 		r.error = workflow.ExecuteActivity(*r.ctx, Mocks.GetRoomToUpgrade, r.reservationId).Get(*r.ctx, &r.room)
 	}
 	h.next.execute(r)
 }
 
-type createUpgradeEmailMessageHandler struct {
+type CreateUpgradeEmailMessageHandler struct {
 	baseHandler
 }
 
 // Now this piece of business logic can be separated of any Temporal knowledge and unit tested completely isolated
-func (h *createUpgradeEmailMessageHandler) execute(r *receiver) {
+func (h *CreateUpgradeEmailMessageHandler) execute(r *receiver) {
 	if r.error == nil {
 		r.email = CreateUpgradeEmailMessage(r.reservationId, r.room)
 	}
 	h.next.execute(r)
 }
 
-type sendEmailHandler struct {
+type SendEmailHandler struct {
 	baseHandler
 }
 
-func (h *sendEmailHandler) execute(r *receiver) {
+func (h *SendEmailHandler) execute(r *receiver) {
 	if r.error == nil {
 		r.error = workflow.ExecuteActivity(*r.ctx, Mocks.SendEmail, r.email).Get(*r.ctx, &r.success)
 	}

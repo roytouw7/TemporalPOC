@@ -2,6 +2,7 @@ package email
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"TemporalTemplatePatternPOC/Mocks"
@@ -17,16 +18,26 @@ type TestSuite struct {
 	suite.Suite
 	testsuite.WorkflowTestSuite
 
-	mockClient WorkflowClient
-	env        *testsuite.TestWorkflowEnvironment
+	mockClient          WorkflowClient
+	mockHandlerProvider HandlerProvider
+	env                 *testsuite.TestWorkflowEnvironment
 
 	service EmailWorkflowService
+}
+
+type MockCreateUpgradeEmailMessageHandler struct {
+	baseHandler
+}
+
+func (h *MockCreateUpgradeEmailMessageHandler) execute(r *receiver) {
+	r.error = fmt.Errorf("test a failing handler")
 }
 
 func (test *TestSuite) SetupTest() {
 	test.env = test.NewTestWorkflowEnvironment()
 	test.mockClient = &MockClient{}
-	test.service = NewEmailWorkflowService(test.mockClient)
+	test.mockHandlerProvider = NewHandlerProvider(new(GetRoomToUpgradeHandler), new(CreateUpgradeEmailMessageHandler), new(SendEmailHandler))
+	test.service = NewEmailWorkflowService(test.mockClient, test.mockHandlerProvider)
 }
 
 func (test *TestSuite) AfterTest(suiteName, testName string) {
@@ -57,4 +68,17 @@ func (test *TestSuite) TestExecuteUpgradeEmailWorkflow() {
 
 	test.True(test.env.IsWorkflowCompleted())
 	test.NoError(test.env.GetWorkflowError())
+}
+
+func (test *TestSuite) TestUpgradeEmailWorkflowV3_FailingHandler() {
+	globalHandlerProvider = NewHandlerProvider(new(GetRoomToUpgradeHandler), new(MockCreateUpgradeEmailMessageHandler), new(SendEmailHandler))
+
+	test.env.OnActivity(Mocks.GetRoomToUpgrade, mock.Anything).Return("Mocked Room", nil)
+
+	id := uuid.NewString()
+
+	test.env.ExecuteWorkflow(UpgradeEmailWorkflowV3, id)
+
+	test.True(test.env.IsWorkflowCompleted())
+	test.Contains(test.env.GetWorkflowError().Error(), "test a failing handler")
 }
