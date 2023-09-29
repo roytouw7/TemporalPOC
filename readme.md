@@ -12,7 +12,7 @@ This POC simulates the simplified version of upgrading an existing reservation, 
 2. create an email message using this reservation and the fetched room name
 3. calling the email microservice(mocked) to send this created e-mail to the user with the upgrade link
 
-There are 2 non-deterministic pieces of logic involved with accompanied specific retry behavior, they are captures in Temporal activities:
+There are 2 non-deterministic pieces of logic involved with accompanied specific retry behavior, they are captured in Temporal activities:
 1. getting the room name via http request
 2. sending the e-mail via http request
 

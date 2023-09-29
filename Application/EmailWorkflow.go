@@ -54,30 +54,23 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
-func createChainOfCommand(reservationId string) (*receiver, []handler) {
+func createChainOfCommand(reservationId string) (*receiver, handler) {
 	r := &receiver{reservationId: reservationId}
 
 	roomUpgradeHandler := &getRoomToUpgradeHandler{}
 	createMailHandler := &createUpgradeEmailMessageHandler{}
 	sendHandler := &sendEmailHandler{}
 
-	roomUpgradeHandler.setNext(createMailHandler)
-	createMailHandler.setNext(sendHandler)
+	roomUpgradeHandler.setNext(createMailHandler).setNext(sendHandler)
 
-	handlers := []handler{
-		roomUpgradeHandler,
-		createMailHandler,
-		sendHandler,
-	}
-
-	return r, handlers
+	return r, roomUpgradeHandler
 }
 
 // UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern
 // sadly we can not simply pass the handlers in as a workflow function can not accept functions do to them not being serializable
 func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
 	// TODO it's a major bummer this factory fn can't be injected somehow, would allow for creating tailored factories for unit tests to mock some parts of the chain
-	r, handlers := createChainOfCommand(reservationId)
+	r, handler := createChainOfCommand(reservationId)
 
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Second * 5,
@@ -85,7 +78,7 @@ func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, e
 	ctx = workflow.WithActivityOptions(ctx, options)
 	r.ctx = &ctx
 
-	handlers[len(handlers)-1].execute(r)
+	handler.execute(r)
 
 	if r.error != nil {
 		return false, r.error
@@ -113,6 +106,7 @@ func (h *getRoomToUpgradeHandler) execute(r *receiver) {
 	if r.error == nil {
 		r.error = workflow.ExecuteActivity(*r.ctx, Mocks.GetRoomToUpgrade, r.reservationId).Get(*r.ctx, &r.room)
 	}
+	h.next.execute(r)
 }
 
 type createUpgradeEmailMessageHandler struct {
@@ -124,6 +118,7 @@ func (h *createUpgradeEmailMessageHandler) execute(r *receiver) {
 	if r.error == nil {
 		r.email = CreateUpgradeEmailMessage(r.reservationId, r.room)
 	}
+	h.next.execute(r)
 }
 
 type sendEmailHandler struct {
