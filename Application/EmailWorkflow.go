@@ -12,7 +12,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-var globalFactory HandlerProvider
+var globalFactory func() handler
 
 // WorkflowClient limit our knowledge of Temporal
 type WorkflowClient interface {
@@ -28,7 +28,7 @@ type emailWorkflowService struct {
 }
 
 func NewEmailWorkflowService(client WorkflowClient) EmailWorkflowService {
-	globalFactory = NewHandlerProvider(&getRoomToUpgradeHandler{}, &createUpgradeEmailMessageHandler{}, &sendEmailHandler{})
+	globalFactory = handlerProvider
 
 	return &emailWorkflowService{
 		client: client,
@@ -58,49 +58,29 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
-type handlerProvider struct {
-	roomUpgradeHandler handler
-	createEmailHandler handler
-	sendHandler        handler
-}
-
-type HandlerProvider interface {
-	provideHandler(reservationId string) (*receiver, handler)
-}
-
-func NewHandlerProvider(roomUpgradeHandler handler, createEmailHandler handler, sendHandler handler) HandlerProvider {
-	return &handlerProvider{
-		roomUpgradeHandler: roomUpgradeHandler,
-		createEmailHandler: createEmailHandler,
-		sendHandler:        sendHandler,
-	}
-}
-
-func (p *handlerProvider) provideHandler(reservationId string) (*receiver, handler) {
-	r := &receiver{reservationId: reservationId}
-
-	roomUpgradeHandler := p.roomUpgradeHandler
-	createMailHandler := p.createEmailHandler
-	sendHandler := p.sendHandler
+func handlerProvider() handler {
+	roomUpgradeHandler := &getRoomToUpgradeHandler{}
+	createMailHandler := &createUpgradeEmailMessageHandler{}
+	sendHandler := &sendEmailHandler{}
 
 	roomUpgradeHandler.setNext(createMailHandler).setNext(sendHandler)
 
-	return r, roomUpgradeHandler
+	return roomUpgradeHandler
 }
 
 // UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern
 func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
-	//r, handler := globalFactory(reservationId)
-	if globalFactory == nil {
-		return false, fmt.Errorf("factory not initiated")
-	}
-	r, handler := globalFactory.provideHandler(reservationId)
+	handler := globalFactory()
 
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Second * 5,
 	}
 	ctx = workflow.WithActivityOptions(ctx, options)
-	r.ctx = &ctx
+
+	r := &receiver{
+		reservationId: reservationId,
+		ctx:           &ctx,
+	}
 
 	handler.execute(r)
 

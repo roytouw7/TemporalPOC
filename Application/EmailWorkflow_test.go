@@ -75,7 +75,15 @@ func (test *TestSuite) TestExecuteUpgradeEmailWorkflow_mockedCreateEmailHandler(
 	id := uuid.NewString()
 
 	// we set a mock handler to test the error flow
-	globalFactory = NewHandlerProvider(&getRoomToUpgradeHandler{}, &mockCreateUpgradeEmailMessageHandler{}, &sendEmailHandler{})
+	globalFactory = func() handler {
+		roomUpgradeHandler := &getRoomToUpgradeHandler{}
+		createMailHandler := &mockCreateUpgradeEmailMessageHandler{}
+		sendHandler := &sendEmailHandler{}
+
+		roomUpgradeHandler.setNext(createMailHandler).setNext(sendHandler)
+
+		return roomUpgradeHandler
+	}
 
 	test.env.ExecuteWorkflow(UpgradeEmailWorkflowV3, id)
 
