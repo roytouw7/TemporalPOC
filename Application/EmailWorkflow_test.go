@@ -2,6 +2,7 @@ package email
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"TemporalTemplatePatternPOC/Mocks"
@@ -57,4 +58,27 @@ func (test *TestSuite) TestExecuteUpgradeEmailWorkflow() {
 
 	test.True(test.env.IsWorkflowCompleted())
 	test.NoError(test.env.GetWorkflowError())
+}
+
+type mockCreateUpgradeEmailMessageHandler struct {
+	baseHandler
+}
+
+func (h *mockCreateUpgradeEmailMessageHandler) execute(r *receiver) {
+	r.error = fmt.Errorf("expected error")
+	h.next.execute(r)
+}
+
+func (test *TestSuite) TestExecuteUpgradeEmailWorkflow_mockedCreateEmailHandler() {
+	test.env.OnActivity(Mocks.GetRoomToUpgrade, mock.Anything).Return("Mocked Room", nil)
+
+	id := uuid.NewString()
+
+	// we set a mock handler to test the error flow
+	globalFactory = NewHandlerProvider(&getRoomToUpgradeHandler{}, &mockCreateUpgradeEmailMessageHandler{}, &sendEmailHandler{})
+
+	test.env.ExecuteWorkflow(UpgradeEmailWorkflowV3, id)
+
+	test.True(test.env.IsWorkflowCompleted())
+	test.Contains(test.env.GetWorkflowError().Error(), "expected error")
 }

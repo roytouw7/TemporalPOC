@@ -12,6 +12,8 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+var globalFactory HandlerProvider
+
 // WorkflowClient limit our knowledge of Temporal
 type WorkflowClient interface {
 	ExecuteWorkflow(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error)
@@ -26,6 +28,8 @@ type emailWorkflowService struct {
 }
 
 func NewEmailWorkflowService(client WorkflowClient) EmailWorkflowService {
+	globalFactory = NewHandlerProvider(&getRoomToUpgradeHandler{}, &createUpgradeEmailMessageHandler{}, &sendEmailHandler{})
+
 	return &emailWorkflowService{
 		client: client,
 	}
@@ -54,12 +58,30 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
-func createChainOfCommand(reservationId string) (*receiver, handler) {
+type handlerProvider struct {
+	roomUpgradeHandler handler
+	createEmailHandler handler
+	sendHandler        handler
+}
+
+type HandlerProvider interface {
+	provideHandler(reservationId string) (*receiver, handler)
+}
+
+func NewHandlerProvider(roomUpgradeHandler handler, createEmailHandler handler, sendHandler handler) HandlerProvider {
+	return &handlerProvider{
+		roomUpgradeHandler: roomUpgradeHandler,
+		createEmailHandler: createEmailHandler,
+		sendHandler:        sendHandler,
+	}
+}
+
+func (p *handlerProvider) provideHandler(reservationId string) (*receiver, handler) {
 	r := &receiver{reservationId: reservationId}
 
-	roomUpgradeHandler := &getRoomToUpgradeHandler{}
-	createMailHandler := &createUpgradeEmailMessageHandler{}
-	sendHandler := &sendEmailHandler{}
+	roomUpgradeHandler := p.roomUpgradeHandler
+	createMailHandler := p.createEmailHandler
+	sendHandler := p.sendHandler
 
 	roomUpgradeHandler.setNext(createMailHandler).setNext(sendHandler)
 
@@ -67,10 +89,12 @@ func createChainOfCommand(reservationId string) (*receiver, handler) {
 }
 
 // UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern
-// sadly we can not simply pass the handlers in as a workflow function can not accept functions do to them not being serializable
 func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
-	// TODO it's a major bummer this factory fn can't be injected somehow, would allow for creating tailored factories for unit tests to mock some parts of the chain
-	r, handler := createChainOfCommand(reservationId)
+	//r, handler := globalFactory(reservationId)
+	if globalFactory == nil {
+		return false, fmt.Errorf("factory not initiated")
+	}
+	r, handler := globalFactory.provideHandler(reservationId)
 
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Second * 5,
