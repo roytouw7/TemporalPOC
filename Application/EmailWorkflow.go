@@ -12,8 +12,6 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-var globalFactory func() handler
-
 // WorkflowClient limit our knowledge of Temporal
 type WorkflowClient interface {
 	ExecuteWorkflow(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error)
@@ -28,8 +26,6 @@ type emailWorkflowService struct {
 }
 
 func NewEmailWorkflowService(client WorkflowClient) EmailWorkflowService {
-	globalFactory = handlerProvider
-
 	return &emailWorkflowService{
 		client: client,
 	}
@@ -58,31 +54,40 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
-func handlerProvider() handler {
+func handlerProvider() Handler {
 	roomUpgradeHandler := &getRoomToUpgradeHandler{}
 	createMailHandler := &createUpgradeEmailMessageHandler{}
 	sendHandler := &sendEmailHandler{}
 
-	roomUpgradeHandler.setNext(createMailHandler).setNext(sendHandler)
+	roomUpgradeHandler.
+		setNext(createMailHandler).
+		setNext(sendHandler)
 
 	return roomUpgradeHandler
 }
 
 // UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern
 func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
-	handler := globalFactory()
+	handler := handlerProvider()
+	r := createReceiver(ctx, reservationId)
 
+	return handleUpgrade(handler, r)
+}
+
+func createReceiver(ctx workflow.Context, reservationId string) *receiver {
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Second * 5,
 	}
 	ctx = workflow.WithActivityOptions(ctx, options)
 
-	r := &receiver{
+	return &receiver{
 		reservationId: reservationId,
 		ctx:           &ctx,
 	}
+}
 
-	handler.execute(r)
+func handleUpgrade(h Handler, r *receiver) (bool, error) {
+	h.execute(r)
 
 	if r.error != nil {
 		return false, r.error
@@ -91,7 +96,7 @@ func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, e
 	return r.success, nil
 }
 
-// Orchestration code below, a handler for every part of the process
+// Orchestration code below, a Handler for every part of the process
 
 type receiver struct {
 	ctx           *workflow.Context

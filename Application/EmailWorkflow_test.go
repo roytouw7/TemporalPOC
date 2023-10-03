@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 type TestSuite struct {
@@ -69,23 +70,27 @@ func (h *mockCreateUpgradeEmailMessageHandler) execute(r *receiver) {
 	h.next.execute(r)
 }
 
+// TestExecuteUpgradeEmailWorkflow_mockedCreateEmailHandler tests the failure of the createUpgradeEmailMessageHandler
 func (test *TestSuite) TestExecuteUpgradeEmailWorkflow_mockedCreateEmailHandler() {
 	test.env.OnActivity(Mocks.GetRoomToUpgrade, mock.Anything).Return("Mocked Room", nil)
 
-	id := uuid.NewString()
-
-	// we set a mock handler to test the error flow
-	globalFactory = func() handler {
+	var mockUpgradeEmailWorkflow = func(ctx workflow.Context, reservationId string) (bool, error) {
 		roomUpgradeHandler := &getRoomToUpgradeHandler{}
-		createMailHandler := &mockCreateUpgradeEmailMessageHandler{}
+		createMailHandler := &mockCreateUpgradeEmailMessageHandler{} // mock
 		sendHandler := &sendEmailHandler{}
 
-		roomUpgradeHandler.setNext(createMailHandler).setNext(sendHandler)
+		roomUpgradeHandler.
+			setNext(createMailHandler).
+			setNext(sendHandler)
 
-		return roomUpgradeHandler
+		r := createReceiver(ctx, reservationId)
+
+		return handleUpgrade(roomUpgradeHandler, r)
 	}
 
-	test.env.ExecuteWorkflow(UpgradeEmailWorkflowV3, id)
+	id := uuid.NewString()
+
+	test.env.ExecuteWorkflow(mockUpgradeEmailWorkflow, id)
 
 	test.True(test.env.IsWorkflowCompleted())
 	test.Contains(test.env.GetWorkflowError().Error(), "expected error")

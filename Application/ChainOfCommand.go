@@ -1,16 +1,16 @@
 package email
 
 type baseHandler struct {
-	next handler
+	next Handler
 }
 
-// setNext sets the next handler in chain, returns the next for chaining setNext
-func (h *baseHandler) setNext(next handler) handler {
+// setNext sets the next Handler in chain, returns the next for chaining setNext
+func (h *baseHandler) setNext(next Handler) Handler {
 	h.next = next
 	return next
 }
 
-type handler interface {
+type Handler interface {
 	execute(r *receiver)
-	setNext(handler) handler
+	setNext(Handler) Handler
 }
