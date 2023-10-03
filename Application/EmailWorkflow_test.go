@@ -1,7 +1,6 @@
 package email
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 )
@@ -31,7 +29,7 @@ func (test *TestSuite) SetupTest() {
 	test.service = NewEmailWorkflowService(test.mockClient)
 }
 
-func (test *TestSuite) AfterTest(suiteName, testName string) {
+func (test *TestSuite) AfterTest() {
 	test.env.AssertExpectations(test.T())
 }
 
@@ -42,14 +40,8 @@ func TestRun(t *testing.T) {
 	suite.Run(t, new(TestSuite))
 }
 
-type MockClient struct{}
-
-// ExecuteWorkflow noop for passing the interface
-func (c *MockClient) ExecuteWorkflow(_ context.Context, _ client.StartWorkflowOptions, _ interface{}, _ ...interface{}) (client.WorkflowRun, error) {
-	return nil, nil
-}
-
-func (test *TestSuite) TestExecuteUpgradeEmailWorkflow() {
+// TestUpgradeEmailWorkflow tests the workflow happy flow
+func (test *TestSuite) TestUpgradeEmailWorkflow() {
 	test.env.OnActivity(Mocks.GetRoomToUpgrade, mock.Anything).Return("Mocked Room", nil)
 	test.env.OnActivity(Mocks.SendEmail, mock.Anything).Return(true, nil)
 
@@ -70,8 +62,8 @@ func (h *mockCreateUpgradeEmailMessageHandler) execute(r *receiver) {
 	h.next.execute(r)
 }
 
-// TestExecuteUpgradeEmailWorkflow_mockedCreateEmailHandler tests the failure of the createUpgradeEmailMessageHandler
-func (test *TestSuite) TestExecuteUpgradeEmailWorkflow_mockedCreateEmailHandler() {
+// TestUpgradeEmailWorkflow_mockedCreateEmailHandler tests the failure of the createUpgradeEmailMessageHandler
+func (test *TestSuite) TestUpgradeEmailWorkflow_mockedCreateEmailHandler() {
 	test.env.OnActivity(Mocks.GetRoomToUpgrade, mock.Anything).Return("Mocked Room", nil)
 
 	var mockUpgradeEmailWorkflow = func(ctx workflow.Context, reservationId string) (bool, error) {
@@ -94,4 +86,12 @@ func (test *TestSuite) TestExecuteUpgradeEmailWorkflow_mockedCreateEmailHandler(
 
 	test.True(test.env.IsWorkflowCompleted())
 	test.Contains(test.env.GetWorkflowError().Error(), "expected error")
+}
+
+// TestExecuteUpgradeEmailWorkflow Tests the happy flow of executing the workflow
+func (test *TestSuite) TestExecuteUpgradeEmailWorkflow() {
+	success, err := test.service.executeUpgradeEmailWorkflow(uuid.NewString())
+
+	test.True(success)
+	test.NoError(err)
 }
