@@ -26,7 +26,9 @@ To run this project
 ## Design choices
 
 ### Chain of Responsibility Pattern
-TODO
+[The Chain of Responsibility Design Pattern](https://refactoring.guru/design-patterns/chain-of-responsibility) is chosen as this creates an abstraction between the workflow
+and the pieces of logic getting executed, and a logical separation between Temporal and non-Temporal code. This allows for cleaner code and better testability as well as a limited Temporal specific code surface.
+It adheres to the *Single Responsibility Principle* and the *Open Closed Principle* costing a limited amount of overhead via using Go's embedding.
 
 ### Mocking the Workflow
 In the `EmailWorkflow.go` the **UpgradeEmailWorkflowV3** function is kept at a minimum, it sets up the handler

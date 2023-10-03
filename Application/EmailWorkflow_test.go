@@ -75,7 +75,8 @@ func (test *TestSuite) TestUpgradeEmailWorkflow_mockedCreateEmailHandler() {
 			setNext(createMailHandler).
 			setNext(sendHandler)
 
-		r := createReceiver(ctx, reservationId)
+		r := createReceiver(reservationId)
+		r.ctx = &ctx
 
 		return handleUpgrade(roomUpgradeHandler, r)
 	}

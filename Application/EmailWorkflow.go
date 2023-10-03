@@ -54,6 +54,7 @@ func (e emailWorkflowService) executeUpgradeEmailWorkflow(reservationId string) 
 	return success, nil
 }
 
+// handlerProvider constructs the chain of handlers and returns the first handler
 func handlerProvider() Handler {
 	roomUpgradeHandler := &getRoomToUpgradeHandler{}
 	createMailHandler := &createUpgradeEmailMessageHandler{}
@@ -66,26 +67,31 @@ func handlerProvider() Handler {
 	return roomUpgradeHandler
 }
 
-// UpgradeEmailWorkflowV3 using the Chain of Responsibility design pattern
+// UpgradeEmailWorkflowV3 fetches the room, creates a message and sends the e-mail
 func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
 	handler := handlerProvider()
-	r := createReceiver(ctx, reservationId)
+	r := createReceiver(reservationId)
+	r.ctx = addActivityOptionsToCtx(&ctx)
 
 	return handleUpgrade(handler, r)
 }
 
-func createReceiver(ctx workflow.Context, reservationId string) *receiver {
-	options := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Second * 5,
-	}
-	ctx = workflow.WithActivityOptions(ctx, options)
-
+func createReceiver(reservationId string) *receiver {
 	return &receiver{
 		reservationId: reservationId,
-		ctx:           &ctx,
 	}
 }
 
+func addActivityOptionsToCtx(ctx *workflow.Context) *workflow.Context {
+	options := workflow.ActivityOptions{
+		StartToCloseTimeout: time.Second * 5,
+	}
+
+	ptr := workflow.WithActivityOptions(*ctx, options)
+	return &ptr
+}
+
+// handleUpgrade executes the handler using a given receiver
 func handleUpgrade(h Handler, r *receiver) (bool, error) {
 	h.execute(r)
 
@@ -96,7 +102,7 @@ func handleUpgrade(h Handler, r *receiver) (bool, error) {
 	return r.success, nil
 }
 
-// Orchestration code below, a Handler for every part of the process
+// Handles below
 
 type receiver struct {
 	ctx           *workflow.Context
