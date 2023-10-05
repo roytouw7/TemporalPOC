@@ -48,3 +48,6 @@ a mock workflow which gets called by the Temporal testing environment passing in
 #### Alternative Design
 One alternative would be to create a handler factory which acts upon a serializable configuration object, which gets passed to the workflow.
 I believe this solution would introduce a lot of overhead for every workflow ergo this solution was discarded.
+
+## Archimate Diagram POC
+![Archimate Diagram](./docs/TemporalPOC.jpg)
