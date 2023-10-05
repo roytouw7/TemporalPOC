@@ -67,6 +67,61 @@ func handlerProvider() Handler {
 	return roomUpgradeHandler
 }
 
+// UpgradeEmailWorkflow the workflow, only location where Temporal specific code and business logic should be mixed
+// also used by the worker
+func UpgradeEmailWorkflow(ctx workflow.Context, reservationId string) (bool, error) {
+	options := workflow.ActivityOptions{
+		StartToCloseTimeout: time.Second * 5,
+	}
+	ctx = workflow.WithActivityOptions(ctx, options)
+
+	// 1. get room name
+	var room string
+	err := workflow.ExecuteActivity(ctx, Mocks.GetRoomToUpgrade, reservationId).Get(ctx, &room)
+	if err != nil {
+		return false, err
+	}
+
+	// 2. create email message
+	emailMessage := CreateUpgradeEmailMessage(reservationId, room)
+
+	// 3. send email
+	var success bool
+	err = workflow.ExecuteActivity(ctx, Mocks.SendEmail, emailMessage).Get(ctx, &success)
+	if err != nil {
+		return false, err
+	}
+	if !success {
+		return success, nil
+	}
+
+	return success, nil
+}
+
+// UpgradeEmailWorkflowV2 using the Chain of Responsibility design pattern
+func UpgradeEmailWorkflowV2(ctx workflow.Context, reservationId string) (bool, error) {
+	options := workflow.ActivityOptions{
+		StartToCloseTimeout: time.Second * 5,
+	}
+	ctx = workflow.WithActivityOptions(ctx, options)
+
+	roomUpgradeHandler := &getRoomToUpgradeHandler{}
+	createMailHandler := &createUpgradeEmailMessageHandler{}
+	sendHandler := &sendEmailHandler{}
+
+	roomUpgradeHandler.setNext(createMailHandler)
+	createMailHandler.setNext(sendHandler)
+
+	r := &receiver{reservationId: reservationId, ctx: &ctx}
+	sendHandler.execute(r)
+
+	if r.error != nil {
+		return false, r.error
+	}
+
+	return r.success, nil
+}
+
 // UpgradeEmailWorkflowV3 fetches the room, creates a message and sends the e-mail
 func UpgradeEmailWorkflowV3(ctx workflow.Context, reservationId string) (bool, error) {
 	handler := handlerProvider()

@@ -1,0 +1,60 @@
+@startuml
+!include <archimate/Archimate>
+
+sprite $bProcess jar:archimate/business-process
+sprite $bEvent jar:archimate/business-event
+sprite $aService jar:archimate/application-service
+sprite $aComponent jar:archimate/application-component
+sprite $aFn jar:archimate/application-function
+sprite $aInterface jar:archimate/application-interface
+
+skinparam rectangle<<event>> {
+	diagonalCorner 15
+}
+'business layer'
+
+rectangle "Upgrade Reservation" as UpgradeReservation <<$bEvent>><<event>> #Business
+
+rectangle "Send Upgrade Email" as SendUpgradeMail <<$bProcess>><<behavior>> #Business {
+    rectangle "get room name" as GetRoom <<$bProcess>><<behavior>> #Business
+    rectangle "create email message" as CreateMail <<$bProcess>><<behavior>> #Business
+    rectangle "send e-mail" as SendMail <<$bProcess>><<behavior>> #Business
+}
+
+UpgradeReservation -right->> SendUpgradeMail
+
+GetRoom -right->> CreateMail
+CreateMail -right->> SendMail
+
+
+'application behavior layer'
+
+rectangle "UpgradeReservation()" as UpgradeFn <<$aFn>><<behavior>> #Application
+rectangle "SendUpgradeEmail()" as SendUpgradeEmailFn <<$aFn>><<behavior>> #Application
+rectangle "executeUpgradeEmailWorkflow()" as ExecuteWorkflow <<$aFn>><<behavior>> #Application
+rectangle "UpgradeEmailWorkflowV3()" as Workflow <<$aFn>><<behavior>> #Application
+
+UpgradeFn -up-> UpgradeReservation
+
+UpgradeFn -right->> SendUpgradeEmailFn
+SendUpgradeEmailFn -right->> ExecuteWorkflow
+ExecuteWorkflow -right->> Workflow
+
+rectangle "Handler" as HandlerInterface <<$aInterface>><<behavior>> #Application
+
+rectangle "Handler 1" as Handler1 <<$aFn>><<behavior>> #Application
+rectangle "Handler 2" as Handler2 <<$aFn>><<behavior>> #Application
+rectangle "Handler 3" as Handler3 <<$aFn>><<behavior>> #Application
+
+
+Rel_Realization_Up(Handler1, HandlerInterface)
+Rel_Realization_Up(Handler2, HandlerInterface)
+Rel_Realization_Up(Handler3, HandlerInterface)
+
+'application service layer'
+'rectangle "Reservation Service" as ReservationService <<$aService>> #Application
+'rectangle "Email Service" as EmailService <<$aService>> #Application
+'
+'ReservationService -up->> UpgradeFn
+
+@enduml
